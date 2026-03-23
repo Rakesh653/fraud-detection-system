@@ -1,0 +1,38 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=fraud_detection
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  api:
+    build: .
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/fraud_detection
+      - NODE_ENV=production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - redis
+      - postgres
+  worker:
+    build: .
+    command: npm run worker
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/fraud_detection
+      - NODE_ENV=production
+    depends_on:
+      - redis
+      - postgres
+volumes:
+  pgdata:
