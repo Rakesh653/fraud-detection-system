@@ -57,7 +57,7 @@ src/
     transactionRepository.js
   utils/
   config/
-app.js
+  app.js
 server.js
 ```
 
