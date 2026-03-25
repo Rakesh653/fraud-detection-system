@@ -2,6 +2,21 @@
 
 A production-style, event-driven fraud detection prototype that evaluates transactions in real time, enriches them with external signals, persists them to PostgreSQL, and performs async deep analysis via BullMQ.
 
+## Features Supported
+
+- Real-time fraud decisioning (BLOCK / FLAG / APPROVE)
+- Rule engine: velocity + amount threshold checks
+- Mock or external ML scoring (feature-flagged)
+- External signal enrichment (BIN, device fingerprint, IP reputation)
+- Watchlist checks (stub or external)
+- Historical pattern analysis from PostgreSQL
+- Redis caching + velocity counters
+- Queue-based async processing with BullMQ worker
+- PostgreSQL persistence for transactions + feature store
+- Payment gateway webhook ingestion and update flow
+- API gateway stub with optional API key
+- Structured logging
+
 ## Part 1: High-Level Architecture
 
 **Core Components**
