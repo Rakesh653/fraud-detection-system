@@ -1,6 +1,29 @@
 # Real-Time Fraud Detection System (Node.js)
 
-A production-style prototype that simulates real-time fraud detection using rule checks, mock ML scoring, Redis caching, and async processing via BullMQ. It now includes PostgreSQL persistence for all transactions.
+A production-style, event-driven fraud detection prototype that evaluates transactions in real time, enriches them with external signals, persists them to PostgreSQL, and performs async deep analysis via BullMQ.
+
+## Part 1: High-Level Architecture
+
+**Core Components**
+- **API Gateway Stub**: `src/gateway/auth.js` simulates gateway-level auth via `GATEWAY_API_KEY`.
+- **Transaction Processing**: `src/services/transactionService.js` orchestrates scoring, persistence, and caching.
+- **Fraud Detection Engine**: rules + ML scoring + enrichment + historical analysis.
+- **Database Layer**: PostgreSQL for transactions + feature store.
+
+**Integration Points**
+- **Payment Gateways**: Webhook ingestion at `POST /webhooks/payment`.
+- **External Fraud Databases**: BIN lookup, device fingerprinting, IP reputation, watchlist checks.
+- **External ML Scoring**: optional via adapter with retries and circuit breaker.
+
+**Data Flow**
+- **Synchronous**: API request ? rules ? enrichment ? ML scoring ? decision ? DB + cache ? response.
+- **Asynchronous**: event enqueued ? worker consumes ? deep analysis logs.
+
+**Technology Choices**
+- **Compute**: Node.js + Express for IO-heavy, real-time APIs.
+- **Messaging**: BullMQ (Redis-backed) for async processing.
+- **Database**: PostgreSQL for durability, auditability, SQL analytics.
+- **Caching**: Redis for velocity counters and decision cache.
 
 ## Architecture Diagram
 
@@ -27,16 +50,34 @@ sequenceDiagram
   autonumber
   Client->>API: POST /transaction
   API->>Fraud: Rule Engine + ML Score
-  Fraud->>Signals: BIN + Device + IP lookup (stub)
+  Fraud->>Signals: BIN + Device + IP + Watchlist
   Signals-->>Fraud: risk signals
-  Fraud->>Signals: Watchlist check (stub)
-  Fraud->>Redis: Velocity counter + cache
-  API->>Postgres: INSERT transaction
-  API-->>Client: Fraud decision response
-  API-->>Queue: transaction.created event
-  Worker->>Queue: Consume event
-  Worker-->>Logs: Deep analysis output
+  Fraud->>Redis: Velocity + cache
+  API->>Postgres: INSERT transaction + feature_store
+  API-->>Client: Decision response
+  API-->>Queue: transaction.created
+  Worker->>Queue: Consume
+  Worker-->>Logs: Deep analysis
 ```
+
+## Part 2: Event-Driven Deep Dive
+
+**Transaction evaluation includes**
+- **Rule Engine**: velocity and amount thresholds.
+- **ML Scoring**: fraud probability (mock or external adapter).
+- **Watchlist Checks**: external or stubbed list matching.
+- **Historical Patterns**: Postgres-backed user behavior stats.
+
+**Async Flow**
+- API emits a `transaction.created` event to BullMQ.
+- Worker performs deeper analysis without blocking the API.
+
+## Gateway Flow (Webhook Update)
+
+**Behavior**
+- If `transactionId` is provided, webhook updates that transaction.
+- If `provider + eventId` already exists, webhook is treated as duplicate.
+- Otherwise, webhook creates a new transaction and runs scoring.
 
 ## Project Structure
 
@@ -91,316 +132,121 @@ ROADMAP.md
 
 ## Setup & Execution
 
-### 1) Install dependencies
-
+1. Install dependencies
 ```
 npm install
 ```
 
-### 2) Configure environment
-
+2. Configure environment
 ```
 copy .env.example .env
 ```
 
-### 3) Start Redis
-
+3. Start Redis
 ```
 docker compose up -d redis
 ```
 
-### 4) Start PostgreSQL
-
-Option A: Docker (recommended)
-
+4. Start PostgreSQL
 ```
 docker compose up -d postgres
 ```
 
-Option B: pgAdmin (local install)
-
-1. Create a database named `fraud_demo`
-2. Ensure your `.env` matches your local credentials
-
-### 5) Run database migration
-
+5. Run migration
 ```
 npm run db:migrate
 ```
 
-### 6) Seed sample history (optional)
-
+6. Seed sample history (optional)
 ```
 npm run db:seed
 ```
 
-### 7) Start API and worker (separate terminals)
-
+7. Start API and Worker (separate terminals)
 ```
 npm run dev
 ```
-
-`npm run dev` uses nodemon for auto-reload on file changes.
-
 ```
 npm run worker
 ```
 
-## Environment Variables
+## Environment Variables (with descriptions)
 
-Key values are in `.env.example`:
+| Variable | Description |
+| --- | --- |
+| `REDIS_URL` | Redis connection string |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `AMOUNT_THRESHOLD` | Rule engine amount threshold |
+| `VELOCITY_WINDOW_SEC` | Velocity time window (seconds) |
+| `VELOCITY_MAX_TX` | Max tx per window before rule triggers |
+| `ML_TIMEOUT_MS` | Max time to wait for ML score |
+| `DECISION_CACHE_TTL_SEC` | Redis decision cache TTL |
+| `HISTORICAL_WINDOW_DAYS` | Lookback window for historical stats |
+| `HISTORICAL_AMOUNT_SPIKE` | Multiplier to detect spikes |
+| `HISTORICAL_MAX_TX` | Count threshold for high velocity |
+| `WATCHLIST_USER_IDS` | Comma-separated watchlisted users |
+| `WATCHLIST_DEVICE_IDS` | Comma-separated watchlisted devices |
+| `GATEWAY_API_KEY` | API key required for `/transaction` |
+| `PAYMENT_WEBHOOK_SECRET` | HMAC secret for gateway webhooks |
+| `USE_REAL_ML` | Switch to external ML adapter |
+| `ML_SCORING_ENDPOINT` | External ML scoring endpoint |
+| `USE_REAL_WATCHLIST` | Switch to external watchlist adapter |
+| `WATCHLIST_ENDPOINT` | External watchlist endpoint |
 
-- `REDIS_URL`
-- `DATABASE_URL`
-- `AMOUNT_THRESHOLD`
-- `VELOCITY_MAX_TX`
-- `ML_TIMEOUT_MS`
-- `GATEWAY_API_KEY` (optional)
-- `PAYMENT_WEBHOOK_SECRET` (optional)
-- `HISTORICAL_WINDOW_DAYS`
-- `HISTORICAL_AMOUNT_SPIKE`
-- `HISTORICAL_MAX_TX`
-- `WATCHLIST_USER_IDS`
-- `WATCHLIST_DEVICE_IDS`
-- `USE_REAL_ML`
-- `ML_SCORING_ENDPOINT`
-- `USE_REAL_WATCHLIST`
-- `WATCHLIST_ENDPOINT`
+## API Usage (Updated cURL)
 
-## Feature Flags and Adapters
-
-- `USE_REAL_ML=true` switches scoring to the external ML adapter in `src/integrations/ml/mlScoringClient.js`.
-- `USE_REAL_WATCHLIST=true` switches watchlist checks to the external adapter in `src/integrations/fraudSignals/watchlistClient.js`.
-- Both adapters use the shared `HttpAdapter` with retries, timeouts, and a circuit breaker.
-- `ML_SCORING_ENDPOINT` and `WATCHLIST_ENDPOINT` should be full URLs.
-
-## API Usage
-
-### POST /transaction
-
-Request:
-
-```json
-{
+### Create Transaction
+```
+curl --location 'http://localhost:3000/transaction' \
+--header 'Content-Type: application/json' \
+--data '{
   "userId": "user-123",
   "amount": 1250,
   "deviceId": "device-abc",
   "cardBin": "411111",
   "ipAddress": "203.0.113.10"
-}
+}'
 ```
 
-Example curl:
-
+### Payment Gateway Webhook (Update Existing Transaction)
 ```
-curl -X POST http://localhost:3000/transaction \
-  -H "Content-Type: application/json" \
-  -d '{"userId":"user-123","amount":1250,"deviceId":"device-abc","cardBin":"411111","ipAddress":"203.0.113.10"}'
-```
-
-Sample response:
-
-```json
-{
-  "transactionId": "d4fb6a88-3e7e-43d7-a9d1-8b4ed3d98959",
-  "userId": "user-123",
-  "amount": 1250,
-  "deviceId": "device-abc",
-  "decision": "APPROVE",
-  "score": 0.4321,
-  "triggeredRules": [],
-  "ruleResults": [
-    {
-      "id": "velocity_check",
-      "passed": true,
-      "reason": "User has 2 tx in 60s",
-      "meta": {
-        "count": 2,
-        "windowSec": 60,
-        "exceeded": false,
-        "skipped": false
-      }
-    },
-    {
-      "id": "amount_threshold",
-      "passed": true,
-      "reason": "Amount within threshold",
-      "meta": {
-        "amount": 1250,
-        "threshold": 10000
-      }
-    }
-  ],
-  "mlResult": {
-    "model": "mock-ml-v1",
-    "score": 0.4321,
-    "latencyMs": 71,
-    "timedOut": false
-  },
-  "signals": {
-    "bin": {
-      "bin": "411111",
-      "network": "VISA",
-      "issuerCountry": "US",
-      "risk": 0.15,
-      "latencyMs": 34,
-      "source": "bin-db-stub"
-    },
-    "device": {
-      "deviceId": "device-abc",
-      "risk": 0.31,
-      "isNewDevice": false,
-      "confidence": 0.71,
-      "latencyMs": 44,
-      "source": "device-fingerprint-stub"
-    },
-    "ip": {
-      "ipAddress": "203.0.113.10",
-      "risk": 0.7,
-      "reputation": "test-net",
-      "latencyMs": 21,
-      "source": "ip-reputation-stub"
-    },
-    "watchlist": {
-      "matched": false,
-      "matches": [],
-      "risk": 0.1,
-      "latencyMs": 24,
-      "source": "watchlist-stub"
-    },
-    "riskScore": 0.3867
-  },
-  "historical": {
-    "windowDays": 7,
-    "txCount": 4,
-    "avgAmount": 980,
-    "maxAmount": 2100,
-    "flaggedCount": 1,
-    "blockedCount": 0,
-    "flaggedRate": 0.25,
-    "spike": false,
-    "highVelocity": false,
-    "riskScore": 0.2
-  },
-  "evaluatedAt": "2026-03-23T10:12:45.123Z",
-  "cache": {
-    "hit": false,
-    "key": "decision:..."
-  }
-}
-```
-
-### POST /webhooks/payment (Gateway Stub)
-
-This simulates a payment gateway webhook and routes it through the same fraud pipeline.
-
-Request:
-
-```json
-{
+curl --location 'http://localhost:3000/webhooks/payment' \
+--header 'Content-Type: application/json' \
+--data '{
   "eventId": "evt_123",
   "status": "AUTHORIZED",
-  "transactionId": "paste-transaction-id-here",
+  "transactionId": "<PASTE_TRANSACTION_ID>",
+  "provider": "mock-payments",
   "userId": "user-123",
   "amount": 1250,
   "deviceId": "device-abc",
   "cardBin": "411111",
   "ipAddress": "203.0.113.10"
-}
-```
-
-Example curl:
-
-```
-curl -X POST http://localhost:3000/webhooks/payment \
-  -H "Content-Type: application/json" \
-  -d '{"eventId":"evt_123","status":"AUTHORIZED","transactionId":"<TRANSACTION_ID>","userId":"user-123","amount":1250,"deviceId":"device-abc","cardBin":"411111","ipAddress":"203.0.113.10"}'
-```
-
-If `PAYMENT_WEBHOOK_SECRET` is set, include `x-gateway-signature` with the HMAC SHA256 of the JSON payload.
-If `GATEWAY_API_KEY` is set, it is required for `/transaction` but skipped for `/webhooks/payment`.
-If `transactionId` is provided, the webhook updates the existing transaction instead of creating a new one.
-
-## End-to-End Testing
-
-### 1) Send a transaction
-
-Use the curl command above.
-
-### 2) Expected API logs
-
-```
-{"level":30,"transaction":{"id":"...","userId":"user-123","amount":1250,"deviceId":"device-abc"},"msg":"Incoming transaction"}
-{"level":30,"transactionId":"...","decision":"APPROVE","score":0.4321,"msg":"Fraud decision generated"}
-```
-
-### 3) Expected worker logs
-
-```
-{"level":30,"jobId":"...","transaction":{"transaction":{"id":"..."},"decision":{"decision":"APPROVE"}},"msg":"Processing transaction event"}
-{"level":30,"jobId":"...","analysis":{"deepScore":0.91,"latencyMs":321,"recommendation":"ESCALATE"},"msg":"Deep fraud analysis complete"}
-```
-
-### 4) Verify database record
-
-Example query:
-
-```
-SELECT * FROM transactions ORDER BY created_at DESC LIMIT 5;
+}'
 ```
 
 ## Feature Store
 
 The `feature_store` table captures enriched features and model metadata for each transaction.
-The `transactions` table also stores `device_id`, `ip_address`, and `card_bin`.
+The `transactions` table also stores `device_id`, `ip_address`, `card_bin`, `provider`, and `gateway_event_id`.
 
-Seed sample history (optional):
+## Demo Steps (Interview-Ready)
 
-```
-npm run db:seed
-```
-
-## Integration Stubs
-
-- API gateway behavior is simulated via `src/gateway/auth.js` using `GATEWAY_API_KEY`.
-- External fraud signal enrichment stubs live under `src/integrations/fraudSignals/`.
-- Watchlist checks are simulated via `src/integrations/fraudSignals/watchlist.js` using `WATCHLIST_USER_IDS` and `WATCHLIST_DEVICE_IDS`.
-- Historical pattern analysis is computed from Postgres via `src/services/fraud/historicalService.js`.
-- Payment gateway webhook handling is exposed at `POST /webhooks/payment`.
-- External adapters use `src/integrations/adapters/httpAdapter.js` with retries, timeouts, and a circuit breaker.
-
-## Demo Guide
-
-1. Start Redis and PostgreSQL
+1. Start Redis + Postgres
 2. Run `npm run db:migrate`
-3. Run `npm run db:seed` (optional, for historical patterns)
-4. Start the API server
-5. Start the worker
-6. Send a POST `/transaction` request
-7. Show API response
-8. Show worker logs for async processing
-9. Show the DB row in pgAdmin or via SQL
+3. Run `npm run db:seed`
+4. Start API + Worker
+5. Send `/transaction` request and show response
+6. Send `/webhooks/payment` with `transactionId`
+7. Show worker logs for async analysis
+8. Show DB rows in `transactions` and `feature_store`
 
 ## Key Design Decisions
 
-- **Separation of concerns**: API, fraud logic, persistence, and async processing are isolated by module.
-- **Event-driven**: Queue decouples response latency from deep analysis.
-- **Resilience**: Redis failures fall back gracefully; ML scoring enforces timeouts.
-- **Extensibility**: New fraud rules or ML models can be added without API changes.
-
-## Docker (Optional)
-
-Run the full stack:
-
-```
-docker compose up --build
-```
-
-Then run migrations from the host:
-
-```
-npm run db:migrate
-```
+- **Separation of concerns** keeps API, fraud logic, and persistence isolated.
+- **Event-driven design** keeps the API fast while worker runs heavy analysis.
+- **Feature flags** allow switching between mock and real integrations.
+- **Adapters with circuit breaker** provide resilience to external services.
 
 ## Roadmap
 
