@@ -6,6 +6,7 @@ const { checkWatchlistExternal } = require('../../integrations/fraudSignals/watc
 const { logger } = require('../../utils/logger');
 const config = require('../../config');
 
+// Compute a single enrichment risk score from multiple signal sources.
 function calculateAggregateRisk(signals) {
   const values = [
     signals.bin?.risk ?? 0,
@@ -18,6 +19,7 @@ function calculateAggregateRisk(signals) {
   return Number(average.toFixed(4));
 }
 
+// Fetch external/stubbed signals to enrich a transaction.
 async function enrichTransaction(transaction) {
   try {
     const watchlistPromise = config.integrations.watchlist.enabled

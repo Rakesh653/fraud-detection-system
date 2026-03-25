@@ -11,6 +11,7 @@ const { insertTransaction } = require('../models/transactionRepository');
 const { upsertFeatureStore } = require('../models/featureStoreRepository');
 const { AppError } = require('../utils/errors');
 
+// Read a cached fraud decision from Redis if available.
 async function getCachedDecision(cacheKey) {
   return safeRedis(async (redis) => {
     const cached = await redis.get(cacheKey);
@@ -18,6 +19,7 @@ async function getCachedDecision(cacheKey) {
   }, null);
 }
 
+// Store a decision snapshot in Redis for short-lived caching.
 async function setCachedDecision(cacheKey, decision) {
   return safeRedis(async (redis) => {
     await redis.set(
@@ -30,6 +32,7 @@ async function setCachedDecision(cacheKey, decision) {
   }, false);
 }
 
+// Persist ML features and decision metadata for offline analytics.
 async function persistFeatureStore(transaction, decision) {
   const features = {
     transaction: {
@@ -64,6 +67,7 @@ async function persistFeatureStore(transaction, decision) {
   }
 }
 
+// Main transaction processing pipeline: rules, enrichment, ML, persistence, cache.
 async function processTransaction(transaction) {
   const cacheKey = `decision:${hashPayload({
     userId: transaction.userId,

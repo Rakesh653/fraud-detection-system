@@ -1,6 +1,7 @@
 const config = require('../../config');
 const { safeRedis } = require('../../cache/redisClient');
 
+// Check short-term transaction velocity using Redis counters.
 async function checkVelocity(userId) {
   const key = `velocity:${userId}`;
 
@@ -35,6 +36,7 @@ async function checkVelocity(userId) {
   };
 }
 
+// Check if a single transaction exceeds configured amount threshold.
 function checkAmount(amount) {
   const exceeded = amount > config.fraud.amountThreshold;
 
@@ -51,6 +53,7 @@ function checkAmount(amount) {
   };
 }
 
+// Run all synchronous rule checks for a transaction.
 async function runRules(transaction) {
   const velocityResult = await checkVelocity(transaction.userId);
   const amountResult = checkAmount(transaction.amount);

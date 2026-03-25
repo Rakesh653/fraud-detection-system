@@ -1,9 +1,11 @@
+// Map numeric risk score to a final decision label.
 function decisionFromScore(score) {
   if (score > 0.8) return 'BLOCK';
   if (score >= 0.5) return 'FLAG';
   return 'APPROVE';
 }
 
+// Combine rule outcomes and ML score into a final decision payload.
 function aggregate(ruleResults, mlResult) {
   const triggeredRules = ruleResults.filter((rule) => !rule.passed);
   const ruleScore = triggeredRules.length > 0 ? 0.9 : 0.0;

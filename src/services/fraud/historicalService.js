@@ -2,6 +2,7 @@ const config = require('../../config');
 const { getUserHistoryStats } = require('../../models/transactionRepository');
 const { logger } = require('../../utils/logger');
 
+// Derive historical risk indicators from user stats and current transaction.
 function computeHistoricalRisk(transaction, stats) {
   if (!stats || stats.tx_count === 0) {
     return {
@@ -38,6 +39,7 @@ function computeHistoricalRisk(transaction, stats) {
   };
 }
 
+// Query user history and return historical behavior signals.
 async function analyzeHistoricalPatterns(transaction) {
   try {
     const stats = await getUserHistoryStats(transaction.userId, config.fraud.historicalWindowDays);

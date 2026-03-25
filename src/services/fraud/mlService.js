@@ -2,10 +2,12 @@ const config = require('../../config');
 const { logger } = require('../../utils/logger');
 const { scoreWithExternalModel } = require('../../integrations/ml/mlScoringClient');
 
+// Simulate ML service latency window.
 function randomLatencyMs() {
   return 50 + Math.floor(Math.random() * 51);
 }
 
+// Compute a mock ML score from transaction + enrichment context.
 function computeScore(transaction, context) {
   const amountThreshold = config.fraud.amountThreshold || 10000;
   const amountFactor = Math.min(transaction.amount / (amountThreshold * 2), 1) * 0.4;
@@ -16,6 +18,7 @@ function computeScore(transaction, context) {
   return Number(Math.min(1, amountFactor + signalFactor + historicalFactor + noise).toFixed(4));
 }
 
+// Select external scoring when enabled, otherwise use local mock scoring.
 async function performScoring(transaction, context) {
   if (config.integrations.scoring.enabled) {
     try {
@@ -42,6 +45,7 @@ async function performScoring(transaction, context) {
   };
 }
 
+// Public ML scoring API with timeout protection.
 async function scoreTransaction(transaction, context) {
   const timeoutPromise = new Promise((_, reject) => {
     setTimeout(() => reject(new Error('ML scoring timeout')), config.fraud.mlTimeoutMs);
