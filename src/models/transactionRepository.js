@@ -13,8 +13,9 @@ async function insertTransaction(record) {
       ip_address,
       card_bin,
       provider,
-      gateway_event_id
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      gateway_event_id,
+      gateway_status
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
   `;
 
   const values = [
@@ -28,7 +29,8 @@ async function insertTransaction(record) {
     record.ipAddress || null,
     record.cardBin || null,
     record.provider || null,
-    record.gatewayEventId || null
+    record.gatewayEventId || null,
+    record.gatewayStatus || null
   ];
 
   await query(sql, values);
@@ -51,7 +53,64 @@ async function getUserHistoryStats(userId, windowDays) {
   return result.rows[0];
 }
 
+async function getTransactionById(transactionId) {
+  const sql = `
+    SELECT *
+    FROM transactions
+    WHERE transaction_id = $1
+    LIMIT 1
+  `;
+
+  const result = await query(sql, [transactionId]);
+  return result.rows[0] || null;
+}
+
+async function getTransactionByGatewayEvent(provider, gatewayEventId) {
+  const sql = `
+    SELECT *
+    FROM transactions
+    WHERE provider = $1
+      AND gateway_event_id = $2
+    LIMIT 1
+  `;
+
+  const result = await query(sql, [provider, gatewayEventId]);
+  return result.rows[0] || null;
+}
+
+async function updateGatewayInfoById(transactionId, fields) {
+  const sql = `
+    UPDATE transactions
+    SET provider = $2,
+        gateway_event_id = $3,
+        gateway_status = $4
+    WHERE transaction_id = $1
+  `;
+
+  await query(sql, [
+    transactionId,
+    fields.provider || null,
+    fields.gatewayEventId || null,
+    fields.gatewayStatus || null
+  ]);
+}
+
+async function updateGatewayStatusByGatewayEvent(provider, gatewayEventId, gatewayStatus) {
+  const sql = `
+    UPDATE transactions
+    SET gateway_status = $3
+    WHERE provider = $1
+      AND gateway_event_id = $2
+  `;
+
+  await query(sql, [provider, gatewayEventId, gatewayStatus || null]);
+}
+
 module.exports = {
   insertTransaction,
-  getUserHistoryStats
+  getUserHistoryStats,
+  getTransactionById,
+  getTransactionByGatewayEvent,
+  updateGatewayInfoById,
+  updateGatewayStatusByGatewayEvent
 };

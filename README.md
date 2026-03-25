@@ -140,6 +140,8 @@ npm run db:seed
 npm run dev
 ```
 
+`npm run dev` uses nodemon for auto-reload on file changes.
+
 ```
 npm run worker
 ```
@@ -298,6 +300,7 @@ Request:
 {
   "eventId": "evt_123",
   "status": "AUTHORIZED",
+  "transactionId": "paste-transaction-id-here",
   "userId": "user-123",
   "amount": 1250,
   "deviceId": "device-abc",
@@ -311,11 +314,12 @@ Example curl:
 ```
 curl -X POST http://localhost:3000/webhooks/payment \
   -H "Content-Type: application/json" \
-  -d '{"eventId":"evt_123","status":"AUTHORIZED","userId":"user-123","amount":1250,"deviceId":"device-abc","cardBin":"411111","ipAddress":"203.0.113.10"}'
+  -d '{"eventId":"evt_123","status":"AUTHORIZED","transactionId":"<TRANSACTION_ID>","userId":"user-123","amount":1250,"deviceId":"device-abc","cardBin":"411111","ipAddress":"203.0.113.10"}'
 ```
 
 If `PAYMENT_WEBHOOK_SECRET` is set, include `x-gateway-signature` with the HMAC SHA256 of the JSON payload.
 If `GATEWAY_API_KEY` is set, it is required for `/transaction` but skipped for `/webhooks/payment`.
+If `transactionId` is provided, the webhook updates the existing transaction instead of creating a new one.
 
 ## End-to-End Testing
 

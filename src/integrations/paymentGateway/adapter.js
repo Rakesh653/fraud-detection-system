@@ -8,6 +8,7 @@ function normalizeWebhookPayload(payload) {
     cardBin: payload?.cardBin || payload?.bin || null,
     ipAddress: payload?.ipAddress || payload?.ip || null,
     gatewayEventId: payload?.eventId || payload?.id || null,
+    transactionId: payload?.transactionId || payload?.internalTransactionId || payload?.referenceId || null,
     provider: payload?.provider || 'mock-payments',
     status
   };

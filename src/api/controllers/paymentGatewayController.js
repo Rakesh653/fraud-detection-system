@@ -4,6 +4,12 @@ const { enqueueTransaction } = require('../../queue/producer');
 const { logger } = require('../../utils/logger');
 const { normalizeWebhookPayload } = require('../../integrations/paymentGateway/adapter');
 const { verifyWebhookSignature } = require('../../integrations/paymentGateway/webhookVerifier');
+const {
+  getTransactionById,
+  getTransactionByGatewayEvent,
+  updateGatewayInfoById,
+  updateGatewayStatusByGatewayEvent
+} = require('../../models/transactionRepository');
 
 async function handlePaymentWebhook(req, res, next) {
   try {
@@ -27,14 +33,60 @@ async function handlePaymentWebhook(req, res, next) {
       });
     }
 
+    if (normalized.transactionId) {
+      const existing = await getTransactionById(normalized.transactionId);
+
+      if (existing) {
+        await updateGatewayInfoById(existing.transaction_id, {
+          provider: normalized.provider,
+          gatewayEventId: normalized.gatewayEventId,
+          gatewayStatus: normalized.status
+        });
+
+        return res.status(200).json({
+          status: 'updated',
+          transactionId: existing.transaction_id,
+          decision: {
+            status: existing.status,
+            fraudScore: existing.fraud_score
+          }
+        });
+      }
+    }
+
+    if (normalized.provider && normalized.gatewayEventId) {
+      const existingByGateway = await getTransactionByGatewayEvent(
+        normalized.provider,
+        normalized.gatewayEventId
+      );
+
+      if (existingByGateway) {
+        await updateGatewayStatusByGatewayEvent(
+          normalized.provider,
+          normalized.gatewayEventId,
+          normalized.status
+        );
+
+        return res.status(200).json({
+          status: 'duplicate',
+          transactionId: existingByGateway.transaction_id,
+          decision: {
+            status: existingByGateway.status,
+            fraudScore: existingByGateway.fraud_score
+          }
+        });
+      }
+    }
+
     const transaction = {
-      id: randomUUID(),
+      id: normalized.transactionId || randomUUID(),
       userId: normalized.userId,
       amount: normalized.amount,
       deviceId: normalized.deviceId,
       cardBin: normalized.cardBin,
       ipAddress: normalized.ipAddress,
       gatewayEventId: normalized.gatewayEventId,
+      gatewayStatus: normalized.status,
       provider: normalized.provider,
       createdAt: new Date().toISOString()
     };

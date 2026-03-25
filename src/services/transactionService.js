@@ -38,7 +38,8 @@ async function persistFeatureStore(transaction, decision) {
       cardBin: transaction.cardBin || null,
       ipAddress: transaction.ipAddress || null,
       provider: transaction.provider || null,
-      gatewayEventId: transaction.gatewayEventId || null
+      gatewayEventId: transaction.gatewayEventId || null,
+      gatewayStatus: transaction.gatewayStatus || null
     },
     signals: decision.signals,
     historical: decision.historical,
@@ -103,7 +104,8 @@ async function processTransaction(transaction) {
         ipAddress: transaction.ipAddress,
         cardBin: transaction.cardBin,
         provider: transaction.provider,
-        gatewayEventId: transaction.gatewayEventId
+        gatewayEventId: transaction.gatewayEventId,
+        gatewayStatus: transaction.gatewayStatus
       });
     } catch (err) {
       logger.error({ err, transactionId: decision.transactionId }, 'Failed to persist transaction');
@@ -153,7 +155,8 @@ async function processTransaction(transaction) {
       ipAddress: transaction.ipAddress,
       cardBin: transaction.cardBin,
       provider: transaction.provider,
-      gatewayEventId: transaction.gatewayEventId
+      gatewayEventId: transaction.gatewayEventId,
+      gatewayStatus: transaction.gatewayStatus
     });
   } catch (err) {
     logger.error({ err, transactionId: decision.transactionId }, 'Failed to persist transaction');

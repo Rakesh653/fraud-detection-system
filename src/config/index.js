@@ -80,7 +80,7 @@ module.exports = {
   },
   rateLimit: {
     windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60000),
-    max: Number(process.env.RATE_LIMIT_MAX || 120)
+    max: Number(process.env.RATE_LIMIT_MAX || 10)
   },
   queue: {
     name: process.env.QUEUE_NAME || 'transaction.created',
