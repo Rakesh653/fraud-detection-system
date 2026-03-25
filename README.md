@@ -1,6 +1,6 @@
 # Real-Time Fraud Detection System (Node.js)
 
-A production-style, event-driven fraud detection prototype that evaluates transactions in real time, enriches them with external signals, persists them to PostgreSQL, and performs async deep analysis via BullMQ.
+A production-ready, event-driven fraud detection prototype that evaluates transactions in real time, enriches them with external signals, persists them to PostgreSQL, and performs async deep analysis via BullMQ.
 
 ## Features Supported
 
@@ -31,8 +31,8 @@ A production-style, event-driven fraud detection prototype that evaluates transa
 - **External ML Scoring**: optional via adapter with retries and circuit breaker.
 
 **Data Flow**
-- **Synchronous**: API request ? rules ? enrichment ? ML scoring ? decision ? DB + cache ? response.
-- **Asynchronous**: event enqueued ? worker consumes ? deep analysis logs.
+- **Synchronous**: API request -> rules -> enrichment -> ML scoring -> decision -> DB + cache -> response.
+- **Asynchronous**: event enqueued -> worker consumes -> deep analysis logs.
 
 **Technology Choices**
 - **Compute**: Node.js + Express for IO-heavy, real-time APIs.
@@ -92,7 +92,6 @@ sequenceDiagram
 **Behavior**
 - If `transactionId` is provided, webhook updates that transaction.
 - If `provider + eventId` already exists, webhook is treated as duplicate.
-- Otherwise, webhook creates a new transaction and runs scoring.
 
 ## Project Structure
 
@@ -244,17 +243,6 @@ curl --location 'http://localhost:3000/webhooks/payment' \
 
 The `feature_store` table captures enriched features and model metadata for each transaction.
 The `transactions` table also stores `device_id`, `ip_address`, `card_bin`, `provider`, and `gateway_event_id`.
-
-## Demo Steps (Interview-Ready)
-
-1. Start Redis + Postgres
-2. Run `npm run db:migrate`
-3. Run `npm run db:seed`
-4. Start API + Worker
-5. Send `/transaction` request and show response
-6. Send `/webhooks/payment` with `transactionId`
-7. Show worker logs for async analysis
-8. Show DB rows in `transactions` and `feature_store`
 
 ## Key Design Decisions
 
