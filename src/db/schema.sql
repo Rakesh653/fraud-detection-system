@@ -7,5 +7,27 @@ CREATE TABLE IF NOT EXISTS transactions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE transactions
+  ADD COLUMN IF NOT EXISTS device_id TEXT,
+  ADD COLUMN IF NOT EXISTS ip_address TEXT,
+  ADD COLUMN IF NOT EXISTS card_bin TEXT,
+  ADD COLUMN IF NOT EXISTS provider TEXT,
+  ADD COLUMN IF NOT EXISTS gateway_event_id TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_transactions_user_created
   ON transactions (user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_device_created
+  ON transactions (device_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS feature_store (
+  transaction_id UUID PRIMARY KEY REFERENCES transactions(transaction_id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
+  model_version TEXT,
+  model_score NUMERIC(5, 4),
+  features JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_feature_store_user_created
+  ON feature_store (user_id, created_at DESC);

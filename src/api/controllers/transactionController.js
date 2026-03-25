@@ -5,8 +5,13 @@ const { logger } = require('../../utils/logger');
 
 async function createTransaction(req, res, next) {
   try {
-    const { userId, amount, deviceId } = req.body || {};
+    const { userId, amount, deviceId, cardBin, ipAddress } = req.body || {};
     const normalizedAmount = Number(amount);
+    const forwardedFor = req.header('x-forwarded-for');
+    const resolvedIp = ipAddress
+      || (typeof forwardedFor === 'string' ? forwardedFor.split(',')[0].trim() : null)
+      || req.ip
+      || null;
 
     if (!userId || !deviceId || !Number.isFinite(normalizedAmount)) {
       return res.status(400).json({
@@ -19,6 +24,8 @@ async function createTransaction(req, res, next) {
       userId,
       amount: normalizedAmount,
       deviceId,
+      cardBin: cardBin || null,
+      ipAddress: resolvedIp || null,
       createdAt: new Date().toISOString()
     };
 

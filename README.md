@@ -6,8 +6,12 @@ A production-style prototype that simulates real-time fraud detection using rule
 
 ```mermaid
 flowchart LR
-  Client[Client] --> API[API Server]
+  Client[Client] --> Gateway[API Gateway Stub]
+  PaymentGateway[Payment Gateway] --> API[API Server]
+  Gateway --> API
   API --> Fraud[Fraud Services]
+  Fraud --> Signals[External Fraud Signals]
+  Signals --> Fraud
   Fraud --> Redis[(Redis)]
   API --> Redis
   API --> Postgres[(PostgreSQL)]
@@ -23,6 +27,9 @@ sequenceDiagram
   autonumber
   Client->>API: POST /transaction
   API->>Fraud: Rule Engine + ML Score
+  Fraud->>Signals: BIN + Device + IP lookup (stub)
+  Signals-->>Fraud: risk signals
+  Fraud->>Signals: Watchlist check (stub)
   Fraud->>Redis: Velocity counter + cache
   API->>Postgres: INSERT transaction
   API-->>Client: Fraud decision response
@@ -43,22 +50,43 @@ src/
       ruleEngine.js
       mlService.js
       aggregator.js
+      enrichmentService.js
+      historicalService.js
     transactionService.js
   queue/
     producer.js
     worker.js
   cache/
     redisClient.js
+  gateway/
+    auth.js
   db/
     postgres.js
     migrate.js
     schema.sql
+    seed.js
+  integrations/
+    adapters/
+      httpAdapter.js
+    ml/
+      mlScoringClient.js
+    paymentGateway/
+      adapter.js
+      webhookVerifier.js
+    fraudSignals/
+      binLookup.js
+      deviceFingerprint.js
+      ipReputation.js
+      watchlist.js
+      watchlistClient.js
   models/
     transactionRepository.js
+    featureStoreRepository.js
   utils/
   config/
   app.js
 server.js
+ROADMAP.md
 ```
 
 ## Setup & Execution
@@ -91,7 +119,7 @@ docker compose up -d postgres
 
 Option B: pgAdmin (local install)
 
-1. Create a database named `fraud_detection`
+1. Create a database named `fraud_demo`
 2. Ensure your `.env` matches your local credentials
 
 ### 5) Run database migration
@@ -100,7 +128,13 @@ Option B: pgAdmin (local install)
 npm run db:migrate
 ```
 
-### 6) Start API and worker (separate terminals)
+### 6) Seed sample history (optional)
+
+```
+npm run db:seed
+```
+
+### 7) Start API and worker (separate terminals)
 
 ```
 npm run dev
@@ -119,6 +153,24 @@ Key values are in `.env.example`:
 - `AMOUNT_THRESHOLD`
 - `VELOCITY_MAX_TX`
 - `ML_TIMEOUT_MS`
+- `GATEWAY_API_KEY` (optional)
+- `PAYMENT_WEBHOOK_SECRET` (optional)
+- `HISTORICAL_WINDOW_DAYS`
+- `HISTORICAL_AMOUNT_SPIKE`
+- `HISTORICAL_MAX_TX`
+- `WATCHLIST_USER_IDS`
+- `WATCHLIST_DEVICE_IDS`
+- `USE_REAL_ML`
+- `ML_SCORING_ENDPOINT`
+- `USE_REAL_WATCHLIST`
+- `WATCHLIST_ENDPOINT`
+
+## Feature Flags and Adapters
+
+- `USE_REAL_ML=true` switches scoring to the external ML adapter in `src/integrations/ml/mlScoringClient.js`.
+- `USE_REAL_WATCHLIST=true` switches watchlist checks to the external adapter in `src/integrations/fraudSignals/watchlistClient.js`.
+- Both adapters use the shared `HttpAdapter` with retries, timeouts, and a circuit breaker.
+- `ML_SCORING_ENDPOINT` and `WATCHLIST_ENDPOINT` should be full URLs.
 
 ## API Usage
 
@@ -130,7 +182,9 @@ Request:
 {
   "userId": "user-123",
   "amount": 1250,
-  "deviceId": "device-abc"
+  "deviceId": "device-abc",
+  "cardBin": "411111",
+  "ipAddress": "203.0.113.10"
 }
 ```
 
@@ -139,7 +193,7 @@ Example curl:
 ```
 curl -X POST http://localhost:3000/transaction \
   -H "Content-Type: application/json" \
-  -d '{"userId":"user-123","amount":1250,"deviceId":"device-abc"}'
+  -d '{"userId":"user-123","amount":1250,"deviceId":"device-abc","cardBin":"411111","ipAddress":"203.0.113.10"}'
 ```
 
 Sample response:
@@ -181,6 +235,51 @@ Sample response:
     "latencyMs": 71,
     "timedOut": false
   },
+  "signals": {
+    "bin": {
+      "bin": "411111",
+      "network": "VISA",
+      "issuerCountry": "US",
+      "risk": 0.15,
+      "latencyMs": 34,
+      "source": "bin-db-stub"
+    },
+    "device": {
+      "deviceId": "device-abc",
+      "risk": 0.31,
+      "isNewDevice": false,
+      "confidence": 0.71,
+      "latencyMs": 44,
+      "source": "device-fingerprint-stub"
+    },
+    "ip": {
+      "ipAddress": "203.0.113.10",
+      "risk": 0.7,
+      "reputation": "test-net",
+      "latencyMs": 21,
+      "source": "ip-reputation-stub"
+    },
+    "watchlist": {
+      "matched": false,
+      "matches": [],
+      "risk": 0.1,
+      "latencyMs": 24,
+      "source": "watchlist-stub"
+    },
+    "riskScore": 0.3867
+  },
+  "historical": {
+    "windowDays": 7,
+    "txCount": 4,
+    "avgAmount": 980,
+    "maxAmount": 2100,
+    "flaggedCount": 1,
+    "blockedCount": 0,
+    "flaggedRate": 0.25,
+    "spike": false,
+    "highVelocity": false,
+    "riskScore": 0.2
+  },
   "evaluatedAt": "2026-03-23T10:12:45.123Z",
   "cache": {
     "hit": false,
@@ -188,6 +287,35 @@ Sample response:
   }
 }
 ```
+
+### POST /webhooks/payment (Gateway Stub)
+
+This simulates a payment gateway webhook and routes it through the same fraud pipeline.
+
+Request:
+
+```json
+{
+  "eventId": "evt_123",
+  "status": "AUTHORIZED",
+  "userId": "user-123",
+  "amount": 1250,
+  "deviceId": "device-abc",
+  "cardBin": "411111",
+  "ipAddress": "203.0.113.10"
+}
+```
+
+Example curl:
+
+```
+curl -X POST http://localhost:3000/webhooks/payment \
+  -H "Content-Type: application/json" \
+  -d '{"eventId":"evt_123","status":"AUTHORIZED","userId":"user-123","amount":1250,"deviceId":"device-abc","cardBin":"411111","ipAddress":"203.0.113.10"}'
+```
+
+If `PAYMENT_WEBHOOK_SECRET` is set, include `x-gateway-signature` with the HMAC SHA256 of the JSON payload.
+If `GATEWAY_API_KEY` is set, it is required for `/transaction` but skipped for `/webhooks/payment`.
 
 ## End-to-End Testing
 
@@ -217,16 +345,37 @@ Example query:
 SELECT * FROM transactions ORDER BY created_at DESC LIMIT 5;
 ```
 
+## Feature Store
+
+The `feature_store` table captures enriched features and model metadata for each transaction.
+The `transactions` table also stores `device_id`, `ip_address`, and `card_bin`.
+
+Seed sample history (optional):
+
+```
+npm run db:seed
+```
+
+## Integration Stubs
+
+- API gateway behavior is simulated via `src/gateway/auth.js` using `GATEWAY_API_KEY`.
+- External fraud signal enrichment stubs live under `src/integrations/fraudSignals/`.
+- Watchlist checks are simulated via `src/integrations/fraudSignals/watchlist.js` using `WATCHLIST_USER_IDS` and `WATCHLIST_DEVICE_IDS`.
+- Historical pattern analysis is computed from Postgres via `src/services/fraud/historicalService.js`.
+- Payment gateway webhook handling is exposed at `POST /webhooks/payment`.
+- External adapters use `src/integrations/adapters/httpAdapter.js` with retries, timeouts, and a circuit breaker.
+
 ## Demo Guide
 
 1. Start Redis and PostgreSQL
 2. Run `npm run db:migrate`
-3. Start the API server
-4. Start the worker
-5. Send a POST `/transaction` request
-6. Show API response
-7. Show worker logs for async processing
-8. Show the DB row in pgAdmin or via SQL
+3. Run `npm run db:seed` (optional, for historical patterns)
+4. Start the API server
+5. Start the worker
+6. Send a POST `/transaction` request
+7. Show API response
+8. Show worker logs for async processing
+9. Show the DB row in pgAdmin or via SQL
 
 ## Key Design Decisions
 
@@ -248,3 +397,7 @@ Then run migrations from the host:
 ```
 npm run db:migrate
 ```
+
+## Roadmap
+
+See `ROADMAP.md` for future scope items and planned enhancements.

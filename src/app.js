@@ -2,14 +2,17 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const config = require('./config');
 const transactionRoutes = require('./api/routes/transactionRoutes');
+const paymentGatewayRoutes = require('./api/routes/paymentGatewayRoutes');
 const { httpLogger, logger } = require('./utils/logger');
 const { healthCheck } = require('./db/postgres');
 const { getRedis } = require('./cache/redisClient');
+const { gatewayAuth } = require('./gateway/auth');
 
 const app = express();
 
 app.use(httpLogger);
 app.use(express.json({ limit: '1mb' }));
+app.use(gatewayAuth);
 
 app.use(
   rateLimit({
@@ -32,6 +35,7 @@ app.get('/health', async (req, res) => {
 });
 
 app.use('/', transactionRoutes);
+app.use('/', paymentGatewayRoutes);
 
 app.use((err, req, res, next) => {
   logger.error({ err }, 'Unhandled error');

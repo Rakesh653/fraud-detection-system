@@ -65,7 +65,18 @@ module.exports = {
     velocityWindowSec: Number(process.env.VELOCITY_WINDOW_SEC || 60),
     velocityMaxTx: Number(process.env.VELOCITY_MAX_TX || 5),
     decisionCacheTtlSec: Number(process.env.DECISION_CACHE_TTL_SEC || 120),
-    mlTimeoutMs: Number(process.env.ML_TIMEOUT_MS || 120)
+    mlTimeoutMs: Number(process.env.ML_TIMEOUT_MS || 120),
+    historicalWindowDays: Number(process.env.HISTORICAL_WINDOW_DAYS || 7),
+    historicalAmountSpike: Number(process.env.HISTORICAL_AMOUNT_SPIKE || 2.5),
+    historicalMaxTx: Number(process.env.HISTORICAL_MAX_TX || 20),
+    watchlistUserIds: (process.env.WATCHLIST_USER_IDS || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean),
+    watchlistDeviceIds: (process.env.WATCHLIST_DEVICE_IDS || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
   },
   rateLimit: {
     windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60000),
@@ -74,5 +85,33 @@ module.exports = {
   queue: {
     name: process.env.QUEUE_NAME || 'transaction.created',
     workerConcurrency: Number(process.env.WORKER_CONCURRENCY || 5)
+  },
+  gateway: {
+    apiKey: process.env.GATEWAY_API_KEY || '',
+    webhookSecret: process.env.PAYMENT_WEBHOOK_SECRET || ''
+  },
+  integrations: {
+    scoring: {
+      enabled: process.env.USE_REAL_ML === 'true',
+      endpoint: process.env.ML_SCORING_ENDPOINT || '',
+      timeoutMs: Number(process.env.ML_SCORING_TIMEOUT_MS || 200),
+      retries: Number(process.env.ML_SCORING_RETRIES || 2),
+      backoffMs: Number(process.env.ML_SCORING_BACKOFF_MS || 50),
+      circuitBreaker: {
+        failureThreshold: Number(process.env.ML_SCORING_CB_THRESHOLD || 3),
+        resetTimeoutMs: Number(process.env.ML_SCORING_CB_RESET_MS || 30000)
+      }
+    },
+    watchlist: {
+      enabled: process.env.USE_REAL_WATCHLIST === 'true',
+      endpoint: process.env.WATCHLIST_ENDPOINT || '',
+      timeoutMs: Number(process.env.WATCHLIST_TIMEOUT_MS || 200),
+      retries: Number(process.env.WATCHLIST_RETRIES || 1),
+      backoffMs: Number(process.env.WATCHLIST_BACKOFF_MS || 50),
+      circuitBreaker: {
+        failureThreshold: Number(process.env.WATCHLIST_CB_THRESHOLD || 3),
+        resetTimeoutMs: Number(process.env.WATCHLIST_CB_RESET_MS || 30000)
+      }
+    }
   }
 };
